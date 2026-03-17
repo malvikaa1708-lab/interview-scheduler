@@ -1,4 +1,5 @@
 require("dotenv").config()
+console.log("FILES LOADED")
 
 console.log("Manager:", process.env.MANAGER_PHONE)
 
