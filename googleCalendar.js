@@ -16,8 +16,17 @@ async function createCalendarEvent({ date, time, candidateEmail, managerEmail })
 
   try {
 
-    const start = new Date(`${date}T${time}+05:30`)
-    const end = new Date(start.getTime() + 30 * 60000)
+    const [hours, minutes, seconds] = time.split(":")
+
+    const start = new Date(date)   // date = "2026-03-25"
+
+start.setHours(
+  parseInt(hours),
+  parseInt(minutes),
+  parseInt(seconds || "0")
+)
+
+const end = new Date(start.getTime() + 30 * 60000)  
 
     const event = {
       summary: "Interview",
