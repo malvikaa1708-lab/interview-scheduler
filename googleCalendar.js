@@ -12,102 +12,57 @@ oAuth2Client.setCredentials({
 
 const calendar = google.calendar({ version: "v3", auth: oAuth2Client })
 
-// ✅ Convert "5 May" → "2026-05-05"
-function convertToISODate(dateStr) {
-  const months = {
-    January: "01",
-    February: "02",
-    March: "03",
-    April: "04",
-    May: "05",
-    June: "06",
-    July: "07",
-    August: "08",
-    September: "09",
-    October: "10",
-    November: "11",
-    December: "12"
-  }
-
-  const [day, monthName] = dateStr.split(" ")
-  const year = new Date().getFullYear()
-
-  return `${year}-${months[monthName]}-${day.padStart(2, "0")}`
-}
-
-// ✅ Convert "5:00 pm" → "17:00:00"
-function convertTo24Hour(timeStr) {
-  timeStr = timeStr.toLowerCase().trim()
-
-  let [time, modifier] = timeStr.split(" ")
-  let [hours, minutes] = time.split(":")
-
-  hours = parseInt(hours)
-  minutes = minutes ? parseInt(minutes) : 0
-
-  if (modifier === "pm" && hours !== 12) hours += 12
-  if (modifier === "am" && hours === 12) hours = 0
-
-  return `${hours.toString().padStart(2, "0")}:${minutes
-    .toString()
-    .padStart(2, "0")}:00`
-}
-
-// ✅ FIXED IST → UTC conversion
-function createISTDateTime(date, time) {
-  const [year, month, day] = date.split("-").map(Number)
-  const [hours, minutes, seconds] = time.split(":").map(Number)
-
-  return new Date(Date.UTC(
-    year,
-    month - 1,
-    day,
-    hours - 5,
-    minutes - 30,
-    seconds || 0
-  ))
-}
-
+// ✅ MAIN FUNCTION
 async function createCalendarEvent({ date, time, candidateEmail, managerEmail }) {
   try {
+    // 👉 date = "2026-05-19"
+    // 👉 time = "14:00:00"
 
-    // 🔥 FIX: convert before using
-    const isoDate = convertToISODate(date)
-    const isoTime = convertTo24Hour(time)
+    const startDateTime = `${date}T${time}+05:30`
 
-    console.log("✅ ISO DATE:", isoDate)
-    console.log("✅ ISO TIME:", isoTime)
+    console.log("✅ FINAL START:", startDateTime)
 
-    const start = createISTDateTime(isoDate, isoTime)
-    const end = new Date(start.getTime() + 30 * 60000)
+    // 👉 Create end time (+30 mins)
+    const endDate = new Date(startDateTime)
+    endDate.setMinutes(endDate.getMinutes() + 30)
 
     const event = {
       summary: "Interview",
 
       start: {
-        dateTime: start.toISOString(),
+        dateTime: startDateTime,
         timeZone: "Asia/Kolkata"
       },
 
       end: {
-        dateTime: end.toISOString(),
+        dateTime: endDate.toISOString(),
         timeZone: "Asia/Kolkata"
       },
 
       attendees: [
         { email: candidateEmail },
         { email: managerEmail }
-      ]
+      ],
+
+      conferenceData: {
+        createRequest: {
+          requestId: "interview-" + Date.now(),
+          conferenceSolutionKey: { type: "hangoutsMeet" }
+        }
+      }
     }
 
     const res = await calendar.events.insert({
       calendarId: "primary",
       resource: event,
       conferenceDataVersion: 1,
-      sendUpdates: "all" // ✅ email invite
+      sendUpdates: "all"
     })
 
     console.log("✅ Event created:", res.data.htmlLink)
+    console.log("✅ Meet link:", res.data.conferenceData?.entryPoints?.[0]?.uri)
+
+    return res.data
 
   } catch (error) {
     console.error("❌ GOOGLE ERROR:", error.response?.data || error.message)
