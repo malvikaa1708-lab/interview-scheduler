@@ -44,7 +44,7 @@ async function createCalendarEvent({ date, time, candidateEmail, managerEmail })
   try {
   const res = await calendar.events.insert({
     calendarId: "primary",
-    resource: event,
+    resource: Event,
     conferenceDataVersion: 1,
     sendUpdates: "all"
   })
