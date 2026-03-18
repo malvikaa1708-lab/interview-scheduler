@@ -14,45 +14,41 @@ const calendar = google.calendar({ version: "v3", auth: oAuth2Client })
 
 async function createCalendarEvent({ date, time, candidateEmail, managerEmail }) {
 
-  const start = new Date(`${date}T${time}`)
-  const end = new Date(start.getTime() + 30 * 60000)
-
-  const event = {
-    summary: "Interview",
-    description: "Scheduled via WhatsApp Interview Scheduler",
-    start: {
-      dateTime: start,
-      timeZone: "Asia/Kolkata"
-    },
-    end: {
-      dateTime: end,
-      timeZone: "Asia/Kolkata"
-    },
-    attendees: [
-      { email: candidateEmail },
-      { email: managerEmail }
-    ],
-    conferenceData: {
-      createRequest: {
-        requestId: "meet-" + Date.now(),
-        conferenceSolutionKey: { type: "hangoutsMeet" }
-      }
-    }
-  }
-}
-
   try {
-  const res = await calendar.events.insert({
-    calendarId: "primary",
-    resource: Event,
-    conferenceDataVersion: 1,
-    sendUpdates: "all"
-  })
 
-  console.log("✅ Event created:", res.data.htmlLink)
+    const start = new Date(`${date}T${time}`)
+    const end = new Date(start.getTime() + 30 * 60000)
 
-} catch (error) {
-  console.error("❌ GOOGLE CALENDAR ERROR:", error.response?.data || error.message)
+    const event = {
+      summary: "Interview",
+
+      start: {
+        dateTime: start.toISOString(),
+        timeZone: "Asia/Kolkata"
+      },
+
+      end: {
+        dateTime: end.toISOString(),
+        timeZone: "Asia/Kolkata"
+      },
+
+      attendees: [
+        { email: candidateEmail },
+        { email: managerEmail }
+      ]
+    }
+
+    const res = await calendar.events.insert({
+      calendarId: "primary",
+      resource: event,
+      sendUpdates: "all"
+    })
+
+    console.log("✅ Event created:", res.data.htmlLink)
+
+  } catch (error) {
+    console.error("❌ GOOGLE ERROR:", error.response?.data || error.message)
+  }
 }
 
 module.exports = createCalendarEvent
