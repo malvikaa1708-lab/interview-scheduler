@@ -39,7 +39,9 @@ async function createCalendarEvent({ date, time, candidateEmail, managerEmail })
       }
     }
   }
+}
 
+  try {
   const res = await calendar.events.insert({
     calendarId: "primary",
     resource: event,
@@ -47,9 +49,10 @@ async function createCalendarEvent({ date, time, candidateEmail, managerEmail })
     sendUpdates: "all"
   })
 
-  console.log("📅 Event created:", res.data.htmlLink)
+  console.log("✅ Event created:", res.data.htmlLink)
 
-  return res.data
+} catch (error) {
+  console.error("❌ GOOGLE CALENDAR ERROR:", error.response?.data || error.message)
 }
 
 module.exports = createCalendarEvent
