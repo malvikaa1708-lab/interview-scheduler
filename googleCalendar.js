@@ -9,6 +9,28 @@ const oAuth2Client = new google.auth.OAuth2(
 oAuth2Client.setCredentials({
   refresh_token: process.env.GOOGLE_REFRESH_TOKEN
 })
+function convertToISODate(dateStr) {
+  const months = {
+    January: "01",
+    February: "02",
+    March: "03",
+    April: "04",
+    May: "05",
+    June: "06",
+    July: "07",
+    August: "08",
+    September: "09",
+    October: "10",
+    November: "11",
+    December: "12"
+  }
+
+  const [day, monthName] = dateStr.split(" ")
+
+  const year = new Date().getFullYear()   // current year
+
+  return `${year}-${months[monthName]}-${day.padStart(2, "0")}`
+}
 
 const calendar = google.calendar({ version: "v3", auth: oAuth2Client })
 

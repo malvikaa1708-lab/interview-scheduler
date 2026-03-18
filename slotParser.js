@@ -1,52 +1,51 @@
-function parseSlots(text) {
+function parseSlots(message) {
+  const parts = message.split(" ")
 
-const lines = text.split("\n")
-const slots = []
+  // 👉 Extract date
+  const day = parts[0]
+  const monthName = parts[1]
 
-lines.forEach(line => {
+  const months = {
+    January: "01",
+    February: "02",
+    March: "03",
+    April: "04",
+    May: "05",
+    June: "06",
+    July: "07",
+    August: "08",
+    September: "09",
+    October: "10",
+    November: "11",
+    December: "12"
+  }
 
-const parts = line.split(" ")
+  const year = new Date().getFullYear()
 
-const day = parts[0]
-const month = parts[1]
+  const slot_date = `${year}-${months[monthName]}-${day.padStart(2, "0")}`
 
-const times = parts.slice(2)
+  // 👉 Extract times
+  const times = parts.slice(2)
 
-const monthMap = {
-January:1, February:2, March:3, April:4,
-May:5, June:6, July:7, August:8,
-September:9, October:10, November:11, December:12
-}
+  const slots = times.map(t => {
+    let hour = parseInt(t)
+    let minutes = "00"
 
-const monthNumber = monthMap[month]
+    if (t.toLowerCase().includes("pm") && hour !== 12) {
+      hour += 12
+    }
 
-const year = new Date().getFullYear()
+    if (t.toLowerCase().includes("am") && hour === 12) {
+      hour = 0
+    }
 
-const date = `${year}-${monthNumber}-${day}`
+    return {
+      date: slot_date,
+      time: `${hour.toString().padStart(2, "0")}:${minutes}:00`
+    }
+  })
 
-times.forEach(t => {
-
-let hour = parseInt(t)
-let minute = "00"
-
-if(t.toLowerCase().includes("pm") && hour !== 12){
-hour += 12
-}
-
-if(t.toLowerCase().includes("am") && hour === 12){
-hour = 0
-}
-
-slots.push({
-date: date,
-time: `${hour}:${minute}:00`
-})
-
-})
-
-})
-
-return slots
+  return slots
 }
 
 module.exports = parseSlots
