@@ -1,7 +1,6 @@
 function parseSlots(message) {
   const parts = message.split(" ")
 
-  // 👉 Extract date
   const day = parts[0]
   const monthName = parts[1]
 
@@ -21,32 +20,29 @@ function parseSlots(message) {
 
   const slot_date = `${year}-${month}-${day.padStart(2, "0")}`
 
-  // 👉 FIX: Combine time + am/pm
-  const timePairs = []
-  for (let i = 2; i < parts.length; i += 2) {
-    timePairs.push(parts[i] + " " + parts[i + 1])
-  }
+  // 👉 FIX: handle "2pm", "5pm", "2:30pm", etc.
+  const timeParts = parts.slice(2)
 
-  const slots = timePairs.map(t => {
-    const [time, modifier] = t.split(" ")
-    let [hour, minute] = time.split(":")
+  const slots = timeParts.map(t => {
+    const match = t.match(/(\d{1,2})(?::(\d{2}))?(am|pm)/i)
 
-    hour = parseInt(hour)
-    minute = minute || "00"
-
-    if (modifier.toLowerCase() === "pm" && hour !== 12) {
-      hour += 12
+    if (!match) {
+      console.log("❌ Invalid time format:", t)
+      return null
     }
 
-    if (modifier.toLowerCase() === "am" && hour === 12) {
-      hour = 0
-    }
+    let hour = parseInt(match[1])
+    let minute = match[2] || "00"
+    const modifier = match[3].toLowerCase()
+
+    if (modifier === "pm" && hour !== 12) hour += 12
+    if (modifier === "am" && hour === 12) hour = 0
 
     return {
       date: slot_date,
       time: `${hour.toString().padStart(2, "0")}:${minute}:00`
     }
-  })
+  }).filter(Boolean)
 
   return slots
 }
