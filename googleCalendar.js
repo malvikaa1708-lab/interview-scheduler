@@ -16,7 +16,7 @@ async function createCalendarEvent({ date, time, candidateEmail, managerEmail })
 
   try {
 
-    const start = new Date(`${date}T${time}`)
+    const start = new Date(`${date}T${time}+05:30`)
     const end = new Date(start.getTime() + 30 * 60000)
 
     const event = {
@@ -33,16 +33,18 @@ async function createCalendarEvent({ date, time, candidateEmail, managerEmail })
       },
 
       attendees: [
-        { email: candidateEmail },
-        { email: managerEmail }
+        { email: candidateEmail, responseStatus: "needsAction" },
+        { email: managerEmail, responseStatus: "needsAction" }
+        
       ]
     }
 
     const res = await calendar.events.insert({
-      calendarId: "primary",
-      resource: event,
-      sendUpdates: "all"
-    })
+     calendarId: "primary",
+     resource: event,
+     conferenceDataVersion: 1,
+     sendUpdates: "all",   // ✅ MUST
+  })
 
     console.log("✅ Event created:", res.data.htmlLink)
 
