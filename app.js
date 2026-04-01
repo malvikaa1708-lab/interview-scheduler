@@ -1,19 +1,15 @@
 require("dotenv").config()
-console.log("FILES LOADED")
-
-console.log("Manager:", process.env.MANAGER_PHONE)
 
 const express = require("express")
 const sendMessage = require("./whatsapp")
-const generateInvite = require("./calendarInvite")
 const parseSlots = require("./slotParser")
 const db = require("./db")
 const createCalendarEvent = require("./googleCalendar")
 
-
 const app = express()
 app.use(express.json())
-// ✅ ADD HERE
+
+// ---------------- HELPERS ---------------- //
 
 function convertToISODate(dateStr) {
   const months = {
@@ -21,19 +17,15 @@ function convertToISODate(dateStr) {
     May: "05", June: "06", July: "07", August: "08",
     September: "09", October: "10", November: "11", December: "12"
   }
-
   const [day, month] = dateStr.split(" ")
   const year = new Date().getFullYear()
-
   return `${year}-${months[month]}-${day.padStart(2, "0")}`
 }
 
 function convertTo24Hour(timeStr) {
   timeStr = timeStr.toLowerCase().trim()
-
   let [time, modifier] = timeStr.split(" ")
   let [hours, minutes] = time.split(":")
-
   hours = parseInt(hours)
   minutes = minutes ? parseInt(minutes) : 0
 
@@ -45,207 +37,92 @@ function convertTo24Hour(timeStr) {
     .padStart(2, "0")}:00`
 }
 
-app.get("/", (req,res)=>{
-res.send("Interview Scheduler Running")
-})
-
-
-// SAFE DATE FORMATTER
-function formatDate(date){
- if(!date || isNaN(date.getTime())){
-  console.log("Invalid date detected:", date)
-  return ""
- }
- return date.toISOString().replace(/[-:]/g,"").split(".")[0]
-}
-
-
-// CREATE JS DATE FROM MYSQL DATE + TIME
 function buildDate(dateValue, timeValue){
-
  const start = new Date(dateValue)
-
  const parts = timeValue.split(":")
  start.setHours(parseInt(parts[0]), parseInt(parts[1]), 0)
-
  return start
 }
 
+// ---------------- FETCH INTERVIEW DATA ---------------- //
 
-// SEND SLOTS TO CANDIDATE MANUALLY
-app.get("/sendSlots", (req, res) => {
-
-db.query(
-`SELECT * FROM slots
-WHERE status='available'
-AND (slot_date > CURDATE()
-OR (slot_date = CURDATE() AND start_time > CURTIME()))
-ORDER BY slot_date, start_time`,
-async (err, result) => {
-
-if(err){
-console.log(err)
-return res.send("DB error")
+function getInterviewDetails(callback){
+  db.query(
+  `SELECT 
+      c.candidate_id,
+      c.name AS candidate_name,
+      c.phone AS candidate_phone,
+      m.manager_id,
+      m.name AS manager_name,
+      m.phone AS manager_phone,
+      j.job_id,
+      j.job_name
+  FROM candidates c
+  JOIN job_roles j ON c.job_id = j.job_id
+  JOIN manager m ON m.job_id = j.job_id
+  LIMIT 1`,
+  (err, result)=>{
+    if(err || result.length === 0){
+      console.log("Error fetching interview data", err)
+      return
+    }
+    callback(result[0])
+  })
 }
 
-if(result.length === 0){
-return res.send("No slots available")
-}
+// ---------------- SERVER START ---------------- //
 
-let message = "📅 Available Interview Slots\n\n"
-let counter = 1
-let currentDate = ""
+app.listen(process.env.PORT || 3000, async () => {
 
-result.forEach(slot => {
+  console.log("Server running")
 
-const dateObj = new Date(slot.slot_date)
+  getInterviewDetails(async (data)=>{
 
-const date = dateObj.toLocaleDateString("en-IN",{
-day:"numeric",
-month:"long"
-})
+    const message = `Hi ${data.manager_name} 👋
 
-let timeObj = new Date(`1970-01-01T${slot.start_time}`)
+What are your available slots for ${data.job_name} interview for candidate ${data.candidate_name}?`
 
-let time = timeObj.toLocaleTimeString("en-IN",{
-hour:"numeric",
-minute:"2-digit",
-hour12:true
-})
+    await sendMessage(data.manager_phone, message)
 
-if(date !== currentDate){
-message += `\n${date}\n`
-currentDate = date
-}
-
-message += `${counter}️⃣ ${time}\n`
-counter++
+  })
 
 })
 
-message += "\nReply with the slot number to confirm."
+// ---------------- WEBHOOK ---------------- //
 
-await sendMessage(process.env.CANDIDATE_PHONE, message)
-
-res.send("Slots sent")
-
-})
-
-})
-
-
-// CALENDAR DOWNLOAD ROUTE
-app.get("/invite/:id.ics", (req, res) => {
-
-const slotId = req.params.id
-
-db.query(
-"SELECT * FROM slots WHERE id=?",
-[slotId],
-(err, result)=>{
-
-if(err || result.length === 0){
-return res.send("Slot not found")
-}
-
-const slot = result[0]
-
-const start = buildDate(slot.slot_date, slot.start_time)
-const end = new Date(start.getTime() + 30*60000)
-
-const ics = `BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-SUMMARY:Interview
-DTSTART:${formatDate(start)}
-DTEND:${formatDate(end)}
-DESCRIPTION:Interview Meeting
-END:VEVENT
-END:VCALENDAR`
-
-res.setHeader("Content-Type","text/calendar")
-res.setHeader("Content-Disposition","attachment; filename=invite.ics")
-
-res.send(ics)
-
-})
-
-})
-
-
-// SERVER START
-const PORT = process.env.PORT || 3000
-
-app.listen(PORT, async () => {
-
- console.log("Server running on port", PORT)
-
- await sendMessage(
-   process.env.MANAGER_PHONE,
-   "Hi 👋 What are the available interview slots today?"
- )
-
-})
-
-// WEBHOOK VERIFICATION
-app.get("/webhook", (req, res) => {
-
-const VERIFY_TOKEN = "scheduler789"
-
-const mode = req.query["hub.mode"]
-const token = req.query["hub.verify_token"]
-const challenge = req.query["hub.challenge"]
-
-if(mode === "subscribe" && token === VERIFY_TOKEN){
-console.log("Webhook verified")
-res.status(200).send(challenge)
-}else{
-res.sendStatus(403)
-}
-
-})
-
-
-// WEBHOOK MESSAGE RECEIVER
 app.post("/webhook", (req, res) => {
 
-const message =
-req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
+const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
 
 if(message){
 
 const sender = message.from
 const text = message.text?.body
 
-console.log("Sender:", sender)
-console.log("Message:", text)
+// ---------------- MANAGER RESPONSE ---------------- //
+getInterviewDetails((data)=>{
 
-if(sender === process.env.MANAGER_PHONE){
+if(sender === data.manager_phone){
 
-console.log("Message from MANAGER")
-
-// DELETE OLD AVAILABLE SLOTS
-db.query("DELETE FROM slots WHERE status='available'")
+console.log("Manager sent slots")
 
 const slots = parseSlots(text)
-console.log("Parsed slots:",slots)
 
 slots.forEach(slot => {
 
 db.query(
-`INSERT INTO slots (manager_phone, slot_date, start_time)
-VALUES (?, ?, ?)`,
-[sender, slot.date, slot.time]
+`INSERT INTO slots (manager_id, job_id, slot_date, start_time, status)
+VALUES (?, ?, ?, ?, 'available')`,
+[data.manager_id, data.job_id, slot.date, slot.time]
 )
 
 })
 
-console.log("Slots saved")
-sendSlotsToCandidate()
+sendSlotsToCandidate(data)
 
 }else{
 
-console.log("Message from CANDIDATE")
+// ---------------- CANDIDATE RESPONSE ---------------- //
 
 const slotNumber = parseInt(text)
 
@@ -254,15 +131,8 @@ if(!isNaN(slotNumber)){
 db.query(
 `SELECT * FROM slots
 WHERE status='available'
-AND (slot_date > CURDATE()
-OR (slot_date = CURDATE() AND start_time > CURTIME()))
 ORDER BY slot_date,start_time`,
 (err, slots)=>{
-
-if(err){
-console.log(err)
-return
-}
 
 const slot = slots[slotNumber-1]
 
@@ -271,39 +141,32 @@ sendMessage(sender,"❌ Invalid slot number")
 return
 }
 
-reserveSlot(slot.id, sender)
+reserveSlot(slot.slot_id, sender)
 
 })
 
 }
 
 }
+
+})
 
 }
 
 res.sendStatus(200)
-
 })
 
+// ---------------- SEND SLOTS ---------------- //
 
-// SEND SLOTS AUTOMATICALLY
-function sendSlotsToCandidate(){
+function sendSlotsToCandidate(data){
 
 db.query(
 `SELECT * FROM slots
 WHERE status='available'
-AND (slot_date > CURDATE()
-OR (slot_date = CURDATE() AND start_time > CURTIME()))
 ORDER BY slot_date,start_time`,
 async (err, result) => {
 
-if(err){
-console.log(err)
-return
-}
-
 let message = "📅 Available Interview Slots\n\n"
-
 let counter = 1
 let currentDate = ""
 
@@ -311,18 +174,10 @@ result.forEach(slot => {
 
 const dateObj = new Date(slot.slot_date)
 
-const date = dateObj.toLocaleDateString("en-IN",{
-day:"numeric",
-month:"long"
-})
+const date = dateObj.toLocaleDateString("en-IN",{day:"numeric",month:"long"})
 
 let timeObj = new Date(`1970-01-01T${slot.start_time}`)
-
-let time = timeObj.toLocaleTimeString("en-IN",{
-hour:"numeric",
-minute:"2-digit",
-hour12:true
-})
+let time = timeObj.toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit",hour12:true})
 
 if(date !== currentDate){
 message += `\n${date}\n`
@@ -334,45 +189,56 @@ counter++
 
 })
 
-message += "\nReply with the slot number to confirm."
+message += "\nReply with slot number to confirm."
 
-sendMessage(process.env.CANDIDATE_PHONE, message)
+sendMessage(data.candidate_phone, message)
 
 })
-
 }
 
+// ---------------- RESERVE SLOT ---------------- //
 
-// RESERVE SLOT
 function reserveSlot(slotId, candidatePhone){
+
+// get candidate_id
+db.query(
+"SELECT candidate_id FROM candidates WHERE phone=?",
+[candidatePhone],
+(err, result)=>{
+
+if(result.length === 0){
+console.log("Candidate not found")
+return
+}
+
+const candidateId = result[0].candidate_id
 
 db.query(
 `UPDATE slots
 SET status='booked',
-reserved_by=?,
+candidate_id=?,
 booked_at=NOW()
-WHERE id=? AND status='available'`,
-[candidatePhone, slotId],
-(err, result)=>{
+WHERE slot_id=? AND status='available'`,
+[candidateId, slotId],
+(err, res2)=>{
 
-if(err){
-console.log(err)
+if(res2.affectedRows === 0){
+sendMessage(candidatePhone,"⚠️ Slot already booked")
 return
 }
 
-if(result.affectedRows === 0){
-
-sendMessage(candidatePhone,
-"⚠️ Sorry, this slot was already booked.")
-
-}else{
-
+// get full details
 db.query(
-"SELECT * FROM slots WHERE id=?",
+`SELECT s.*, c.name AS candidate_name, m.name AS manager_name, j.job_name, c.email AS candidate_email
+FROM slots s
+JOIN candidates c ON s.candidate_id = c.candidate_id
+JOIN manager m ON s.manager_id = m.manager_id
+JOIN job_roles j ON s.job_id = j.job_id
+WHERE s.slot_id=?`,
 [slotId],
-async (err, slot)=>{
+async (err, result)=>{
 
-const s = slot[0]
+const s = result[0]
 
 const start = buildDate(s.slot_date, s.start_time)
 const end = new Date(start.getTime() + 30*60000)
@@ -380,89 +246,36 @@ const end = new Date(start.getTime() + 30*60000)
 const date = start.toLocaleDateString("en-IN",{day:"numeric",month:"long"})
 const time = start.toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit",hour12:true})
 
-const inviteLink = generateInvite(slotId,s.slot_date,s.start_time)
-
-const icsContent = `BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-SUMMARY:Interview
-DTSTART:${formatDate(start)}
-DTEND:${formatDate(end)}
-DESCRIPTION:Interview Meeting
-END:VEVENT
-END:VCALENDAR`
-
-
-// GET EMAIL FROM DB
-
-// GET CANDIDATE EMAIL FROM DB
-db.query(
-  "SELECT email FROM candidates WHERE phone=? LIMIT 1",
-  [candidatePhone],
-  async (err, result) => {
-
-    if (err) {
-      console.log(err)
-      return
-    }
-
-    if (result.length === 0) {
-      console.log("❌ Candidate email not found")
-      return
-    }
-
-    const candidateEmail = result[0].email
-
-    if (!candidateEmail) {
-      console.log("❌ Candidate email missing in DB")
-      return
-    }
-
-    const managerEmail = process.env.MANAGER_EMAIL
-
-    console.log("📧 Candidate:", candidateEmail)
-    console.log("📧 Manager:", managerEmail)
-
-    // ✅ CREATE GOOGLE CALENDAR EVENT
-    const isoDate = convertToISODate(date)
-    const isoTime = convertTo24Hour(time)
-
-    console.log("🔥 BEFORE:", date, time)
-    console.log("✅ AFTER:", isoDate, isoTime)
-
-    await createCalendarEvent({
-     date: isoDate,
-     time: isoTime,
-     candidateEmail,
-     managerEmail
+// calendar
+await createCalendarEvent({
+  date: convertToISODate(date),
+  time: convertTo24Hour(time),
+  candidateEmail: s.candidate_email,
+  managerEmail: process.env.MANAGER_EMAIL
 })
 
-    // ✅ WHATSAPP TO CANDIDATE
-    await sendMessage(candidatePhone,
+// notify candidate
+await sendMessage(candidatePhone,
 `✅ Interview Confirmed
 
-📅 Date: ${date}
-⏰ Time: ${time}
+📅 ${date}
+⏰ ${time}
 
-📩 Calendar invite sent. Please check your email.`)
+Best of luck!`)
 
-    // ✅ WHATSAPP TO MANAGER
-    await sendMessage(process.env.MANAGER_PHONE,
+// notify manager
+await sendMessage(process.env.MANAGER_PHONE,
 `📌 Interview Booked
 
-📅 Date: ${date}
-⏰ Time: ${time}
+Candidate: ${s.candidate_name}
+Role: ${s.job_name}
 
-Candidate: ${candidatePhone}
-
-📩 Calendar invite sent.`)
-
-  }
-)
+📅 ${date}
+⏰ ${time}`)
 
 })
 
-}
+})
 
 })
 
