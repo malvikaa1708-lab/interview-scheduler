@@ -103,6 +103,15 @@ const text = message.text?.body
 getInterviewDetails((data)=>{
 
 if(sender === data.manager_phone){
+  // ❌ delete old available slots
+db.query(`
+DELETE FROM slots 
+WHERE status='available'
+AND (
+  slot_date < CURDATE()
+  OR (slot_date = CURDATE() AND start_time < CURTIME())
+)
+`)
 
 console.log("Manager sent slots")
 
@@ -131,6 +140,10 @@ if(!isNaN(slotNumber)){
 db.query(
 `SELECT * FROM slots
 WHERE status='available'
+AND (
+  slot_date > CURDATE()
+  OR (slot_date = CURDATE() AND start_time > CURTIME())
+)
 ORDER BY slot_date,start_time`,
 (err, slots)=>{
 
@@ -163,6 +176,10 @@ function sendSlotsToCandidate(data){
 db.query(
 `SELECT * FROM slots
 WHERE status='available'
+AND (
+  slot_date > CURDATE()
+  OR (slot_date = CURDATE() AND start_time > CURTIME())
+)
 ORDER BY slot_date,start_time`,
 async (err, result) => {
 
