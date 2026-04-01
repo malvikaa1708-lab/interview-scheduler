@@ -306,8 +306,9 @@ Best of luck!`)
 await sendMessage(process.env.MANAGER_PHONE,
 `📌 Interview Booked
 
-Candidate: ${s.candidate_name}
-Role: ${s.job_name}
+👤Candidate: ${s.candidate_name}
+📞 Phone: ${candidatePhone}
+💼Role: ${s.job_name}
 
 📅 ${date}
 ⏰ ${time}`)
