@@ -103,12 +103,10 @@ const text = message.text?.body
 getInterviewDetails((data)=>{
 
 if(sender === data.manager_phone){
-  // ❌ delete old available slots
-if(sender === data.manager_phone){
 
 console.log("Manager sent slots")
 
-// STEP 1: DELETE old slots FIRST
+// STEP 1: DELETE OLD SLOTS (WAIT FOR IT)
 db.query(
   "DELETE FROM slots WHERE manager_id=?",
   [data.manager_id],
@@ -123,17 +121,36 @@ db.query(
 
     // STEP 2: PARSE NEW SLOTS
     const slots = parseSlots(text)
+    console.log("Parsed slots:", slots)
 
-    // STEP 3: INSERT NEW SLOTS
-    slots.forEach(slot => {
+    // STEP 3: INSERT ONE BY ONE (CHAINED)
+    const insertPromises = slots.map(slot => {
+      return new Promise((resolve, reject) => {
+        db.query(
+          `INSERT INTO slots (manager_id, job_id, slot_date, start_time, status)
+           VALUES (?, ?, ?, ?, 'available')`,
+          [data.manager_id, data.job_id, slot.date, slot.time],
+          (err)=>{
+            if(err) reject(err)
+            else resolve()
+          }
+        )
+      })
+    })
 
-      db.query(
-        `INSERT INTO slots (manager_id, job_id, slot_date, start_time, status)
-         VALUES (?, ?, ?, ?, 'available')`,
-        [data.manager_id, data.job_id, slot.date, slot.time]
-      )
+    // STEP 4: AFTER ALL INSERTS → SEND TO CANDIDATE
+    Promise.all(insertPromises)
+      .then(()=>{
+        console.log("All slots inserted")
+        sendSlotsToCandidate(data)
+      })
+      .catch(err=>{
+        console.log("Insert error:", err)
+      })
 
-    })})
+  }
+)
+}
 
 
 sendSlotsToCandidate(data)
