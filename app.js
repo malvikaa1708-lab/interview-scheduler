@@ -303,6 +303,7 @@ await sendMessage(candidatePhone,
 
 📅 ${date}
 ⏰ ${time}
+📩 Calendar invite has been sent. Please check your email.
 
 Best of luck!`)
 
@@ -314,7 +315,8 @@ await sendMessage(process.env.MANAGER_PHONE,
 💼Role: ${s.job_name}
 
 📅 ${date}
-⏰ ${time}`)
+⏰ ${time}
+📩 Calendar invite has been sent. Please check your email.`)
 
 })
 
