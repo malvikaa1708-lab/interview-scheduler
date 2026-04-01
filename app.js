@@ -133,19 +133,11 @@ db.query(
         [data.manager_id, data.job_id, slot.date, slot.time]
       )
 
-    })
+    })})
 
-
-db.query(
-`INSERT INTO slots (manager_id, job_id, slot_date, start_time, status)
-VALUES (?, ?, ?, ?, 'available')`,
-[data.manager_id, data.job_id, slot.date, slot.time]
-)
-
-})
 
 sendSlotsToCandidate(data)
-}
+  }
 }else{
 
 // ---------------- CANDIDATE RESPONSE ---------------- //
