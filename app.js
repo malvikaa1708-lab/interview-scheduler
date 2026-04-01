@@ -44,7 +44,7 @@ function buildDate(dateValue, timeValue){
  return start
 }
 
-// ---------------- FETCH INTERVIEW DATA ---------------- //
+// ---------------- FETCH DATA ---------------- //
 
 function getInterviewDetails(callback){
   db.query(
@@ -63,7 +63,7 @@ function getInterviewDetails(callback){
   LIMIT 1`,
   (err, result)=>{
     if(err || result.length === 0){
-      console.log("Error fetching interview data", err)
+      console.log("Error fetching data", err)
       return
     }
     callback(result[0])
@@ -94,105 +94,106 @@ app.post("/webhook", (req, res) => {
 
 const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
 
-if(message){
+if(!message){
+  return res.sendStatus(200)
+}
 
 const sender = message.from
 const text = message.text?.body
 
-// ---------------- MANAGER RESPONSE ---------------- //
 getInterviewDetails((data)=>{
 
+// -------- MANAGER -------- //
 if(sender === data.manager_phone){
 
-console.log("Manager sent slots")
+  console.log("Manager sent slots")
 
-// STEP 1: DELETE OLD SLOTS (WAIT FOR IT)
-db.query(
-  "DELETE FROM slots WHERE manager_id=?",
-  [data.manager_id],
-  (err)=>{
+  db.query(
+    "DELETE FROM slots WHERE manager_id=?",
+    [data.manager_id],
+    (err)=>{
 
-    if(err){
-      console.log("Delete error:", err)
-      return
+      if(err){
+        console.log("Delete error:", err)
+        return
+      }
+
+      const slots = parseSlots(text)
+      console.log("Parsed:", slots)
+
+      if(slots.length === 0){
+        console.log("No valid slots")
+        return
+      }
+
+      const insertPromises = slots.map(slot => {
+        return new Promise((resolve, reject) => {
+          db.query(
+            `INSERT INTO slots (manager_id, job_id, slot_date, start_time, status)
+             VALUES (?, ?, ?, ?, 'available')`,
+            [data.manager_id, data.job_id, slot.date, slot.time],
+            (err)=>{
+              if(err) reject(err)
+              else resolve()
+            }
+          )
+        })
+      })
+
+      Promise.all(insertPromises)
+        .then(()=>{
+          console.log("Slots inserted")
+          sendSlotsToCandidate(data)
+        })
+        .catch(err=>{
+          console.log("Insert error:", err)
+        })
+
     }
+  )
 
-    console.log("Old slots deleted")
+}
 
-    // STEP 2: PARSE NEW SLOTS
-    const slots = parseSlots(text)
-    console.log("Parsed slots:", slots)
+// -------- CANDIDATE -------- //
+else{
 
-    // STEP 3: INSERT ONE BY ONE (CHAINED)
-    const insertPromises = slots.map(slot => {
-      return new Promise((resolve, reject) => {
-        db.query(
-          `INSERT INTO slots (manager_id, job_id, slot_date, start_time, status)
-           VALUES (?, ?, ?, ?, 'available')`,
-          [data.manager_id, data.job_id, slot.date, slot.time],
-          (err)=>{
-            if(err) reject(err)
-            else resolve()
-          }
-        )
-      })
-    })
+  const slotNumber = parseInt(text)
 
-    // STEP 4: AFTER ALL INSERTS → SEND TO CANDIDATE
-    Promise.all(insertPromises)
-      .then(()=>{
-        console.log("All slots inserted")
-        sendSlotsToCandidate(data)
-      })
-      .catch(err=>{
-        console.log("Insert error:", err)
-      })
+  if(!isNaN(slotNumber)){
 
+    db.query(
+      `SELECT * FROM slots
+       WHERE status='available'
+       AND (
+         slot_date > CURDATE()
+         OR (slot_date = CURDATE() AND start_time > CURTIME())
+       )
+       ORDER BY slot_date,start_time`,
+      (err, slots)=>{
+
+        if(err){
+          console.log(err)
+          return
+        }
+
+        const slot = slots[slotNumber-1]
+
+        if(!slot){
+          sendMessage(sender,"❌ Invalid slot number")
+          return
+        }
+
+        reserveSlot(slot.slot_id, sender)
+
+      }
+    )
   }
-)
-}
-
-
-sendSlotsToCandidate(data)
-  }
-}else{
-
-// ---------------- CANDIDATE RESPONSE ---------------- //
-
-const slotNumber = parseInt(text)
-
-if(!isNaN(slotNumber)){
-
-db.query(
-`SELECT * FROM slots
-WHERE status='available'
-AND (
-  slot_date > CURDATE()
-  OR (slot_date = CURDATE() AND start_time > CURTIME())
-)
-ORDER BY slot_date,start_time`,
-(err, slots)=>{
-
-const slot = slots[slotNumber-1]
-
-if(!slot){
-sendMessage(sender,"❌ Invalid slot number")
-return
-}
-
-reserveSlot(slot.slot_id, sender)
-
-})
-
-}
-
 }
 
 })
-
-}
 
 res.sendStatus(200)
+
 })
 
 // ---------------- SEND SLOTS ---------------- //
@@ -243,7 +244,6 @@ sendMessage(data.candidate_phone, message)
 
 function reserveSlot(slotId, candidatePhone){
 
-// get candidate_id
 db.query(
 "SELECT candidate_id FROM candidates WHERE phone=?",
 [candidatePhone],
@@ -270,7 +270,6 @@ sendMessage(candidatePhone,"⚠️ Slot already booked")
 return
 }
 
-// get full details
 db.query(
 `SELECT s.*, c.name AS candidate_name, m.name AS manager_name, j.job_name, c.email AS candidate_email
 FROM slots s
@@ -289,7 +288,6 @@ const end = new Date(start.getTime() + 30*60000)
 const date = start.toLocaleDateString("en-IN",{day:"numeric",month:"long"})
 const time = start.toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit",hour12:true})
 
-// calendar
 await createCalendarEvent({
   date: convertToISODate(date),
   time: convertTo24Hour(time),
@@ -297,7 +295,6 @@ await createCalendarEvent({
   managerEmail: process.env.MANAGER_EMAIL
 })
 
-// notify candidate
 await sendMessage(candidatePhone,
 `✅ Interview Confirmed
 
@@ -306,7 +303,6 @@ await sendMessage(candidatePhone,
 
 Best of luck!`)
 
-// notify manager
 await sendMessage(process.env.MANAGER_PHONE,
 `📌 Interview Booked
 
