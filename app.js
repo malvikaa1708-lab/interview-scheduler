@@ -80,7 +80,10 @@ app.listen(process.env.PORT || 3000, async () => {
 
     const message = `Hi ${data.manager_name} 👋
 
-What are your available slots for ${data.job_name} interview for candidate ${data.candidate_name}?`
+What are your available slots?
+
+💼 Job Role: ${data.job_name}
+👤 Candidate: ${data.candidate_name}`
 
     await sendMessage(data.manager_phone, message)
 
