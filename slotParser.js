@@ -1,48 +1,80 @@
-function parseSlots(message) {
-  const parts = message.split(" ")
-
-  const day = parts[0]
-  const monthName = parts[1]
-
+function convertToISODate(dateStr) {
   const months = {
     January: "01", February: "02", March: "03", April: "04",
     May: "05", June: "06", July: "07", August: "08",
     September: "09", October: "10", November: "11", December: "12"
   }
 
+  const [day, monthName] = dateStr.split(" ")
   const year = new Date().getFullYear()
-  const month = months[monthName]
 
-  if (!month) {
+  if (!months[monthName]) {
     console.log("❌ Invalid month:", monthName)
-    return []
+    return null
   }
 
-  const slot_date = `${year}-${month}-${day.padStart(2, "0")}`
+  return `${year}-${months[monthName]}-${day.padStart(2, "0")}`
+}
 
-  // 👉 FIX: handle "2pm", "5pm", "2:30pm", etc.
-  const timeParts = parts.slice(2)
+function convertTo24Hour(timeStr) {
+  const match = timeStr.match(/(\d{1,2})(?::(\d{2}))?(am|pm)/i)
 
-  const slots = timeParts.map(t => {
-    const match = t.match(/(\d{1,2})(?::(\d{2}))?(am|pm)/i)
+  if (!match) {
+    console.log("❌ Invalid time format:", timeStr)
+    return null
+  }
 
-    if (!match) {
-      console.log("❌ Invalid time format:", t)
-      return null
+  let hour = parseInt(match[1])
+  let minute = match[2] || "00"
+  const modifier = match[3].toLowerCase()
+
+  if (modifier === "pm" && hour !== 12) hour += 12
+  if (modifier === "am" && hour === 12) hour = 0
+
+  return `${hour.toString().padStart(2, "0")}:${minute}:00`
+}
+
+function parseSlots(message) {
+
+  const parts = message.trim().split(/\s+/)
+  const slots = []
+
+  let currentDate = null
+
+  for (let i = 0; i < parts.length; i++) {
+
+    const word = parts[i]
+
+    // ✅ Detect date (number + month)
+    if (!isNaN(word) && parts[i + 1]) {
+      const possibleDate = `${word} ${parts[i + 1]}`
+      const isoDate = convertToISODate(possibleDate)
+
+      if (isoDate) {
+        currentDate = isoDate
+        i++ // skip month
+        continue
+      }
     }
 
-    let hour = parseInt(match[1])
-    let minute = match[2] || "00"
-    const modifier = match[3].toLowerCase()
+    // ✅ Detect time
+    if (word.toLowerCase().includes("am") || word.toLowerCase().includes("pm")) {
 
-    if (modifier === "pm" && hour !== 12) hour += 12
-    if (modifier === "am" && hour === 12) hour = 0
+      if (!currentDate) {
+        console.log("⚠️ Time found without date:", word)
+        continue
+      }
 
-    return {
-      date: slot_date,
-      time: `${hour.toString().padStart(2, "0")}:${minute}:00`
+      const time = convertTo24Hour(word)
+
+      if (time) {
+        slots.push({
+          date: currentDate,
+          time: time
+        })
+      }
     }
-  }).filter(Boolean)
+  }
 
   return slots
 }
