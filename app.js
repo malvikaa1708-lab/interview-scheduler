@@ -104,20 +104,37 @@ getInterviewDetails((data)=>{
 
 if(sender === data.manager_phone){
   // ❌ delete old available slots
-db.query(`
-DELETE FROM slots 
-WHERE status='available'
-AND (
-  slot_date < CURDATE()
-  OR (slot_date = CURDATE() AND start_time < CURTIME())
-)
-`)
+if(sender === data.manager_phone){
 
 console.log("Manager sent slots")
 
-const slots = parseSlots(text)
+// STEP 1: DELETE old slots FIRST
+db.query(
+  "DELETE FROM slots WHERE manager_id=?",
+  [data.manager_id],
+  (err)=>{
 
-slots.forEach(slot => {
+    if(err){
+      console.log("Delete error:", err)
+      return
+    }
+
+    console.log("Old slots deleted")
+
+    // STEP 2: PARSE NEW SLOTS
+    const slots = parseSlots(text)
+
+    // STEP 3: INSERT NEW SLOTS
+    slots.forEach(slot => {
+
+      db.query(
+        `INSERT INTO slots (manager_id, job_id, slot_date, start_time, status)
+         VALUES (?, ?, ?, ?, 'available')`,
+        [data.manager_id, data.job_id, slot.date, slot.time]
+      )
+
+    })
+
 
 db.query(
 `INSERT INTO slots (manager_id, job_id, slot_date, start_time, status)
@@ -128,7 +145,7 @@ VALUES (?, ?, ?, ?, 'available')`,
 })
 
 sendSlotsToCandidate(data)
-
+}
 }else{
 
 // ---------------- CANDIDATE RESPONSE ---------------- //
